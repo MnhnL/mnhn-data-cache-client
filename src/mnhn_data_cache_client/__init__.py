@@ -1,15 +1,16 @@
 from elasticsearch6 import Elasticsearch
-from pprint import pp
+
 
 class DataCacheClient():
-    obs_indices="recorder,inaturalist_current,mnhn_gbif,ornitho"
-    taxon_indices="mnhn-taxa"
+    obs_indices = "recorder,inaturalist_current,mnhn_gbif,ornitho"
+    taxon_indices = "mnhn-taxa"
 
-    def __init__(self, es_host="serv-gis.vm.mnhn.etat.lu", chunk_size=35000):
-        self._es_host = es_host
-        self._es = Elasticsearch(["serv-gis.vm.mnhn.etat.lu"])
+    def __init__(self, es_hosts=["serv-gis.vm.mnhn.etat.lu"], chunk_size=35000):
+        if type(es_hosts) not in (list, tuple):
+            es_hosts = [es_hosts]
+        self._es = Elasticsearch(es_hosts)
         self._chunk_size = chunk_size
-        
+
         self._observation_mapping = self._es.indices.get_mapping('recorder')
         self._taxon_mapping = self._es.indices.get_mapping(DataCacheClient.taxon_indices)
 
@@ -29,7 +30,7 @@ class DataCacheClient():
                                  date_range=None,
                                  recorder_names=None,
                                  polygon=None):
-        query ={
+        query = {
             "bool": {
                 "filter": [],
                 "must": [],
@@ -48,7 +49,7 @@ class DataCacheClient():
             elif not _from:
                 query["bool"]["filter"].append({"range": {"date_start": {"lt": _to}}})
             else:
-                raise Error()
+                raise ValueError("date_range must have at least one bound")
 
         if recorder_names:
             query["bool"]["must"].append({"match": {"recorder_names": recorder_names}})
@@ -65,7 +66,7 @@ class DataCacheClient():
                     }
                 }
             })
-        
+
         return query
 
     def _make_observations_body(self, query):
@@ -84,10 +85,9 @@ class DataCacheClient():
         for i in range(0, count, self._chunk_size):
             body["size"] = self._chunk_size
             body["from"] = i
-            obs = self._es.search(index=DataCacheClient.obs_indices,
+            yield self._es.search(index=DataCacheClient.obs_indices,
                                   size=self._chunk_size,
                                   body=body)
-            yield(obs)
 
     def _make_taxa_query(self, taxon_name=None, rank=None):
         query = {
@@ -105,39 +105,30 @@ class DataCacheClient():
 
         return query
 
-    def _make_taxa_body(self, query):
-        return {
-            "query": query,
-        }
-            
     def search_taxa(self, **kwargs):
         query = self._make_taxa_query(**kwargs)
         search_body = {"query": query}
         count = self._es.count(index=DataCacheClient.taxon_indices,
                                body=search_body)["count"]
-        body = self._make_taxa_body(query)
+        body = {"query": query}
         for i in range(0, count, self._chunk_size):
             body["size"] = self._chunk_size
             body["from"] = i
-            obs = self._es.search(index=DataCacheClient.taxon_indices,
+            yield self._es.search(index=DataCacheClient.taxon_indices,
                                   size=self._chunk_size,
                                   body=body)
-            yield(obs)
 
     def print_results(self, query, cols):
         count = 0
-
         for c in cols:
             print(repr(c), end="\t")
         print()
-
         for obs in query:
             hits = obs["hits"]["hits"]
             count += len(hits)
             for o in hits:
                 src = o["_source"]
                 for col in cols:
-                    c = src.get(col, "n/a")
-                    print(repr(c), end="\t")
+                    print(repr(src.get(col, "n/a")), end="\t")
                 print()
         print(f"Found {count} items")
