@@ -2,17 +2,22 @@ from elasticsearch6 import Elasticsearch
 
 
 class DataCacheClient():
-    obs_indices = "recorder,inaturalist_current,mnhn_gbif,ornitho"
-    taxon_indices = "mnhn-taxa"
 
-    def __init__(self, es_hosts=["serv-gis.vm.mnhn.etat.lu"], chunk_size=35000):
+    def __init__(self,
+                 es_hosts=["serv-gis.vm.mnhn.etat.lu"],
+                 chunk_size=35000,
+                 obs_indices=["data_cache_obs_recorder"],
+                 taxon_indices=["data_cache_taxon"],
+                 **kwargs):
         if type(es_hosts) not in (list, tuple):
             es_hosts = [es_hosts]
-        self._es = Elasticsearch(es_hosts)
+        self._es = Elasticsearch(es_hosts, **kwargs)
         self._chunk_size = chunk_size
+        self.obs_indices = obs_indices
+        self.taxon_indices = taxon_indices
 
-        self._observation_mapping = self._es.indices.get_mapping('recorder')
-        self._taxon_mapping = self._es.indices.get_mapping(DataCacheClient.taxon_indices)
+        self._observation_mapping = self._es.indices.get_mapping(obs_indices[0])
+        self._taxon_mapping = self._es.indices.get_mapping(taxon_indices[0])
 
     def observation_mapping(self):
         if 'mnhn' in self._observation_mapping:
@@ -22,7 +27,7 @@ class DataCacheClient():
         return ks
 
     def taxon_mapping(self):
-        ks = self._taxon_mapping[DataCacheClient.taxon_indices]['mappings']['taxa']['properties']
+        ks = self._taxon_mapping[self.taxon_indices]['mappings']['taxa']['properties']
         return ks
 
     def _make_observations_query(self,
@@ -79,13 +84,13 @@ class DataCacheClient():
 
     def search_observations(self, **kwargs):
         query = self._make_observations_query(**kwargs)
-        count = self._es.count(index=DataCacheClient.obs_indices,
+        count = self._es.count(index=self.obs_indices,
                                body={"query": query})["count"]
         body = self._make_observations_body(query)
         for i in range(0, count, self._chunk_size):
             body["size"] = self._chunk_size
             body["from"] = i
-            yield self._es.search(index=DataCacheClient.obs_indices,
+            yield self._es.search(index=self.obs_indices,
                                   size=self._chunk_size,
                                   body=body)
 
@@ -108,13 +113,13 @@ class DataCacheClient():
     def search_taxa(self, **kwargs):
         query = self._make_taxa_query(**kwargs)
         search_body = {"query": query}
-        count = self._es.count(index=DataCacheClient.taxon_indices,
+        count = self._es.count(index=self.taxon_indices,
                                body=search_body)["count"]
         body = {"query": query}
         for i in range(0, count, self._chunk_size):
             body["size"] = self._chunk_size
             body["from"] = i
-            yield self._es.search(index=DataCacheClient.taxon_indices,
+            yield self._es.search(index=self.taxon_indices,
                                   size=self._chunk_size,
                                   body=body)
 
