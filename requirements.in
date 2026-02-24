@@ -1,2 +1,2 @@
-elasticsearch6
+elasticsearch>=8,<9
 
