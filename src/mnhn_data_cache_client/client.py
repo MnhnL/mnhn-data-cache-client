@@ -141,7 +141,8 @@ class DataCacheClient():
                                  taxon_filters=None,
                                  date_range=None,
                                  recorder_names=None,
-                                 polygon=None):
+                                 polygon=None,
+                                 geo_filter=None):
         """Build an Elasticsearch bool query for observations.
 
         Args:
@@ -209,6 +210,9 @@ class DataCacheClient():
                     }
                 }
             })
+
+        if geo_filter:
+            filter_.append(geo_filter)
 
         bool_q = {}
         if must:
