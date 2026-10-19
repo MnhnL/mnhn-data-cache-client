@@ -1,5 +1,7 @@
 from elasticsearch import Elasticsearch
 
+from .geo import buffer_geojson
+
 
 class TaxonFilter:
     """A single taxon criterion built from a previously resolved taxon ID.
@@ -142,7 +144,8 @@ class DataCacheClient():
                                  date_range=None,
                                  recorder_names=None,
                                  polygon=None,
-                                 geo_filter=None):
+                                 areas=None,
+                                 within_m=None):
         """Build an Elasticsearch bool query for observations.
 
         Args:
@@ -154,6 +157,10 @@ class DataCacheClient():
             recorder_names: Recorder name filter (full-text match).
             polygon: List of ``[lon, lat]`` coordinate pairs forming a closed
                 ring.
+            areas: List of GeoJSON geometry dicts (WGS84). Observations
+                intersecting any of them match.
+            within_m: Optional distance in metres: with *areas*, observations
+                up to this far outside an area match too.
         """
         must     = []
         must_not = []
@@ -211,8 +218,18 @@ class DataCacheClient():
                 }
             })
 
-        if geo_filter:
-            filter_.append(geo_filter)
+        if areas:
+            if within_m:
+                areas = [buffer_geojson(a, within_m) for a in areas]
+            filter_.append({
+                "bool": {
+                    "should": [
+                        {"geo_shape": {"location": {"shape": a, "relation": "intersects"}}}
+                        for a in areas
+                    ],
+                    "minimum_should_match": 1,
+                }
+            })
 
         bool_q = {}
         if must:
