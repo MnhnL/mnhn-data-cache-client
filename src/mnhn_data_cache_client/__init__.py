@@ -1,3 +1,3 @@
-from .client import DataCacheClient, TaxonFilter
+from .client import DataCacheClient, Taxon, TaxonFilter
 
-__all__ = ["DataCacheClient", "TaxonFilter"]
+__all__ = ["DataCacheClient", "Taxon", "TaxonFilter"]
