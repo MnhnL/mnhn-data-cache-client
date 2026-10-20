@@ -84,3 +84,13 @@ def test_buffer_handles_multipolygons():
     }
     buffered = shape(buffer_geojson(multi, 100))
     assert buffered.contains(shape(multi))
+
+
+def test_date_range_bounds_are_inclusive():
+    def date_filter(date_range):
+        (clause,) = _query(date_range=date_range)["bool"]["filter"]
+        return clause["range"]["date_start"]
+
+    assert date_filter(("2024-01-01", "2024-12-31")) == {"gte": "2024-01-01", "lte": "2024-12-31"}
+    assert date_filter(("2024-01-01", None)) == {"gte": "2024-01-01"}
+    assert date_filter((None, "2024-12-31")) == {"lte": "2024-12-31"}

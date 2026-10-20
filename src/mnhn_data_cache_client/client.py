@@ -271,8 +271,8 @@ class DataCacheClient():
             taxon_filters: A :class:`TaxonFilter` or list of
                 :class:`TaxonFilter`.  Multiple *include* filters are combined
                 with OR; *exclude* filters generate ``must_not`` clauses.
-            date_range: ``(from, to)`` date strings; either bound may be
-                ``None`` for an open interval.
+            date_range: ``(from, to)`` date strings, both inclusive; either
+                bound may be ``None`` for an open interval.
             recorder_names: Recorder name filter (full-text match).
             polygon: List of ``[lon, lat]`` coordinate pairs forming a closed
                 ring.
@@ -313,11 +313,11 @@ class DataCacheClient():
         if date_range:
             _from, _to = date_range
             if _from and _to:
-                filter_.append({"range": {"date_start": {"gt": _from, "lt": _to}}})
+                filter_.append({"range": {"date_start": {"gte": _from, "lte": _to}}})
             elif not _to:
-                filter_.append({"range": {"date_start": {"gt": _from}}})
+                filter_.append({"range": {"date_start": {"gte": _from}}})
             elif not _from:
-                filter_.append({"range": {"date_start": {"lt": _to}}})
+                filter_.append({"range": {"date_start": {"lte": _to}}})
             else:
                 raise ValueError("date_range must have at least one bound")
 
