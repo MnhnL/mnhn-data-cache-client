@@ -1,6 +1,6 @@
 [project]
 name = "mnhn_data_cache_client"
-version = "26.10.20"
+version = "26.10.20-2"
 dynamic = ["dependencies"]
 
 [build-system]
