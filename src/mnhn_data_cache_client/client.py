@@ -96,6 +96,19 @@ class Taxon:
         )
 
 
+@dataclass(frozen=True)
+class ReferenceList:
+    """A taxon list or designation kept in Recorder, e.g. a red list.
+
+    Attributes:
+        name: The list's name, which is also how it is identified.
+        observation_count: Number of observations whose taxon is on it.
+    """
+
+    name: str
+    observation_count: int
+
+
 class DataCacheClient():
 
     def __init__(self,
@@ -224,6 +237,71 @@ class DataCacheClient():
             size=limit,
         )
         return [Taxon._from_source(hit["_source"]) for hit in result["hits"]["hits"]]
+
+    # ------------------------------------------------------------------
+    # Reference lists
+    # ------------------------------------------------------------------
+    # The taxon lists and designations kept in Recorder (checklists, red
+    # lists, legal protection, ...). The data cache has no index of them:
+    # each observation names, in its List field, the lists its taxon is on.
+    # So a list is known only by its name, and only its observed taxa show.
+
+    def get_reference_lists(self, limit=1000):
+        """Return the reference lists that observations mention, most used first.
+
+        Returns:
+            A list of :class:`ReferenceList`.
+        """
+        result = self._es.search(
+            index=self.obs_indices,
+            size=0,
+            aggs={"lists": {"terms": {"field": "List", "size": limit}}},
+        )
+        return [
+            ReferenceList(name=bucket["key"], observation_count=bucket["doc_count"])
+            for bucket in result["aggregations"]["lists"]["buckets"]
+        ]
+
+    def get_reference_list_taxa(self, name, page_size=1000):
+        """Return ids of the observed taxa on list *name*, one per accepted taxon.
+
+        The ids are taxon index keys, like :attr:`Taxon.id`, so they can be
+        passed to :meth:`get_taxa`; a few that only the observations know may
+        be missing from the index there.
+
+        Observations carry the accepted taxon only as a taxon list item key
+        (``taxon_preferred``), which the taxon index shares between the
+        accepted name, its synonyms and its vernacular names. So the accepted
+        name's own key is taken from the observations: the most observed
+        ``Taxon_Key`` among records identified to the accepted name itself
+        (``Taxon_List_Item_Key == taxon_preferred``), else the most observed
+        one of the taxon.
+        """
+        best = {}  # accepted key -> ((identified to it, count), Taxon_Key)
+        composite = {
+            "size": page_size,
+            "sources": [
+                {"accepted": {"terms": {"field": "taxon_preferred.keyword"}}},
+                {"item": {"terms": {"field": "Taxon_List_Item_Key"}}},
+                {"taxon": {"terms": {"field": "Taxon_Key"}}},
+            ],
+        }
+        while True:
+            result = self._es.search(
+                index=self.obs_indices,
+                size=0,
+                query={"term": {"List": name}},
+                aggs={"taxa": {"composite": composite}},
+            )
+            agg = result["aggregations"]["taxa"]
+            for bucket in agg["buckets"]:
+                key = bucket["key"]
+                score = (key["item"] == key["accepted"], bucket["doc_count"])
+                if key["accepted"] not in best or score > best[key["accepted"]][0]:
+                    best[key["accepted"]] = (score, key["taxon"])
+            if "after_key" not in agg or len(agg["buckets"]) < page_size:
+                return {taxon for _, taxon in best.values()}
+            composite = {**composite, "after": agg["after_key"]}
 
     # ------------------------------------------------------------------
     # Observation query helpers
